@@ -1,1 +1,1 @@
-web: gunicorn --worker-class sync --workers 1 --threads 4 --worker-connections 1000 --max-requests 1000 --max-requests-jitter 50 --timeout 60 wsgi:app
+web: gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class sync --timeout 60 --access-logfile - --error-logfile - app:app
