@@ -32,6 +32,7 @@ def create_app():
     from endpoints.blog import blog_bp
     from endpoints.stores import stores_bp
     from endpoints.admin import admin_bp
+    from endpoints.health import health_bp
     
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(products_bp, url_prefix='/api/products')
@@ -42,14 +43,7 @@ def create_app():
     app.register_blueprint(blog_bp, url_prefix='/api/blog')
     app.register_blueprint(stores_bp, url_prefix='/api/stores')
     app.register_blueprint(admin_bp, url_prefix='/api/admin')
-    
-    # Health check endpoint
-    @app.route('/health', methods=['GET'])
-    def health():
-        return jsonify({
-            'status': 'ok',
-            'message': 'Harrison Bull API is running'
-        }), 200
+    app.register_blueprint(health_bp, url_prefix='/health')
     
     # Root endpoint
     @app.route('/', methods=['GET'])
@@ -58,7 +52,8 @@ def create_app():
             'name': 'Harrison Bull E-Commerce API',
             'version': '1.0.0',
             'status': 'active',
-            'docs': '/api/docs'
+            'docs': '/api/docs',
+            'health': '/health'
         }), 200
     
     # Error handlers
