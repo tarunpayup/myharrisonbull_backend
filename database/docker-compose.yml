@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: harrison_bull_db
+    environment:
+      POSTGRES_DB: harrison_bull_db
+      POSTGRES_USER: harrison_bull
+      POSTGRES_PASSWORD: dev_password_change_in_production
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      # Mount database files
+      - postgres_data:/var/lib/postgresql/data
+      # Initialize database with schema
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./seed_data.sql:/docker-entrypoint-initdb.d/02-seed_data.sql
+    networks:
+      - harrison_bull_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U harrison_bull -d harrison_bull_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Optional: pgAdmin for database GUI management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: harrison_bull_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@harrisonbull.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - harrison_bull_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  harrison_bull_network:
+    driver: bridge

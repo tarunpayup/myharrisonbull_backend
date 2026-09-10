@@ -1,0 +1,236 @@
+#!/bin/bash
+
+# Harrison Bull Backend - Render Database Setup Script
+# This script helps set up the PostgreSQL database for Render
+
+set -e  # Exit on error
+
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}╔════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║  Harrison Bull - Render Database Setup         ║${NC}"
+echo -e "${BLUE}╚════════════════════════════════════════════════╝${NC}"
+echo ""
+
+# Check if PostgreSQL client is installed
+echo -e "${YELLOW}Checking PostgreSQL client installation...${NC}"
+if ! command -v psql &> /dev/null; then
+    echo -e "${RED}❌ PostgreSQL client (psql) is not installed${NC}"
+    echo ""
+    echo "Install PostgreSQL client:"
+    echo "  macOS:   brew install postgresql"
+    echo "  Ubuntu:  sudo apt-get install postgresql-client"
+    echo "  Windows: Download from https://www.postgresql.org/download/windows/"
+    echo ""
+    exit 1
+fi
+echo -e "${GREEN}✓ PostgreSQL client found${NC}"
+echo ""
+
+# Menu
+echo -e "${BLUE}Select setup option:${NC}"
+echo "1. Load schema only (for existing Render database)"
+echo "2. Load schema + seed data"
+echo "3. Test Render connection"
+echo "4. Create .env file from template"
+echo ""
+read -p "Enter option (1-4): " option
+
+case $option in
+    1)
+        echo ""
+        echo -e "${YELLOW}Loading database schema...${NC}"
+        echo ""
+        read -p "Enter Render DATABASE_URL (postgresql://...): " db_url
+        
+        if [ -z "$db_url" ]; then
+            echo -e "${RED}❌ Database URL cannot be empty${NC}"
+            exit 1
+        fi
+        
+        echo -e "${YELLOW}Connecting and loading schema...${NC}"
+        psql "$db_url" -f schema.sql
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✓ Schema loaded successfully!${NC}"
+            echo ""
+            echo "Verify installation:"
+            echo "  psql \"$db_url\" -c \"\\dt\""
+        else
+            echo -e "${RED}❌ Failed to load schema${NC}"
+            exit 1
+        fi
+        ;;
+        
+    2)
+        echo ""
+        echo -e "${YELLOW}Loading schema and seed data...${NC}"
+        echo ""
+        read -p "Enter Render DATABASE_URL (postgresql://...): " db_url
+        
+        if [ -z "$db_url" ]; then
+            echo -e "${RED}❌ Database URL cannot be empty${NC}"
+            exit 1
+        fi
+        
+        echo -e "${YELLOW}Connecting and loading schema...${NC}"
+        psql "$db_url" -f schema.sql
+        
+        echo -e "${YELLOW}Loading seed data...${NC}"
+        psql "$db_url" -f seed_data.sql
+        
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✓ Schema and seed data loaded successfully!${NC}"
+            echo ""
+            echo "Sample data added:"
+            echo "  - Admin user: admin@harrisonbull.com"
+            echo "  - 4 sample products"
+            echo "  - 7 categories"
+            echo "  - 3 promotional banners"
+        else
+            echo -e "${RED}❌ Failed to load data${NC}"
+            exit 1
+        fi
+        ;;
+        
+    3)
+        echo ""
+        echo -e "${YELLOW}Testing Render connection...${NC}"
+        echo ""
+        read -p "Enter Render DATABASE_URL (postgresql://...): " db_url
+        
+        if [ -z "$db_url" ]; then
+            echo -e "${RED}❌ Database URL cannot be empty${NC}"
+            exit 1
+        fi
+        
+        echo -e "${YELLOW}Attempting connection...${NC}"
+        if psql "$db_url" -c "SELECT version();" > /dev/null 2>&1; then
+            echo -e "${GREEN}✓ Connection successful!${NC}"
+            echo ""
+            psql "$db_url" -c "SELECT version();"
+            echo ""
+            echo -e "${YELLOW}Checking tables...${NC}"
+            psql "$db_url" -c "\dt"
+        else
+            echo -e "${RED}❌ Connection failed${NC}"
+            echo ""
+            echo "Troubleshooting:"
+            echo "  1. Check DATABASE_URL is correct from Render dashboard"
+            echo "  2. Verify database is in 'Available' status"
+            echo "  3. Check password doesn't have special characters"
+            echo "  4. Ensure your internet connection is working"
+            exit 1
+        fi
+        ;;
+        
+    4)
+        echo ""
+        echo -e "${YELLOW}Creating .env file...${NC}"
+        
+        if [ -f ".env" ]; then
+            echo -e "${YELLOW}⚠️  .env file already exists${NC}"
+            read -p "Overwrite? (yes/no): " confirm
+            if [ "$confirm" != "yes" ]; then
+                echo "Cancelled"
+                exit 0
+            fi
+        fi
+        
+        echo ""
+        read -p "Enter Render DATABASE_URL (postgresql://...): " db_url
+        
+        if [ -z "$db_url" ]; then
+            echo -e "${RED}❌ Database URL cannot be empty${NC}"
+            exit 1
+        fi
+        
+        # Create .env file
+        cat > .env << EOF
+# Harrison Bull Backend - Environment Configuration
+# Auto-generated by setup.sh
+
+# Render PostgreSQL Configuration
+DATABASE_URL=$db_url
+
+# Connection Pool Settings
+DATABASE_POOL_MIN=2
+DATABASE_POOL_MAX=10
+DATABASE_IDLE_TIMEOUT=30000
+DATABASE_CONNECTION_TIMEOUT=10000
+
+# Node Environment
+NODE_ENV=development
+
+# API Server Settings
+API_HOST=0.0.0.0
+API_PORT=3000
+API_URL=http://localhost:3000
+
+# Frontend URL (for CORS)
+FRONTEND_URL=http://localhost:3000
+
+# JWT Settings (for authentication)
+JWT_SECRET=your_super_secret_key_change_in_production
+JWT_EXPIRES_IN=7d
+
+# Email Configuration (for notifications)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+SMTP_FROM=noreply@harrisonbull.com
+
+# AWS S3 Configuration (for file uploads)
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_S3_BUCKET=harrison-bull-assets
+
+# Payment Processing (Stripe or similar)
+STRIPE_PUBLIC_KEY=pk_test_...
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Logging & Monitoring
+LOG_LEVEL=info
+EOF
+        
+        echo -e "${GREEN}✓ .env file created successfully!${NC}"
+        echo ""
+        echo "Next steps:"
+        echo "  1. Review and update values in .env"
+        echo "  2. Set JWT_SECRET to a strong random value"
+        echo "  3. Configure email (SMTP) if needed"
+        echo "  4. Add AWS S3 credentials if uploading files"
+        echo "  5. Never commit .env to Git!"
+        echo ""
+        echo "To keep .env out of Git:"
+        echo "  echo '.env' >> .gitignore"
+        echo "  git rm --cached .env"
+        ;;
+        
+    *)
+        echo -e "${RED}Invalid option${NC}"
+        exit 1
+        ;;
+esac
+
+echo ""
+echo -e "${GREEN}╔════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║  Setup Complete!                              ║${NC}"
+echo -e "${GREEN}╚════════════════════════════════════════════════╝${NC}"
+echo ""
+echo "Next steps:"
+echo "1. Review DATABASE_URL in .env"
+echo "2. Set up backend application with ORM"
+echo "3. Build API endpoints"
+echo "4. Deploy to Render Web Service"
+echo ""
+echo "For detailed setup guide, see RENDER_SETUP.md"
+echo ""
