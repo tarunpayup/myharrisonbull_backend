@@ -1,12 +1,36 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, current_app, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from extensions import db
-from sqlalchemy import text
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 import bcrypt
 import logging
 
+from extensions import db
+from services import serialize_user
+from utils import clean_str, error, execute, is_uuid, json_body, query_one, split_name
+
 logger = logging.getLogger(__name__)
 auth_bp = Blueprint('auth', __name__)
+
+MIN_PASSWORD_LENGTH = 6
+USER_COLUMNS = '''id, email, first_name, last_name, phone, avatar_url, newsletter_subscribed,
+                  promotions_enabled, preferred_shoe_size, preferred_width, is_admin, is_active, created_at'''
+
+
+def _hash_password(password):
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+
+def _auth_response(message, user, status):
+    return jsonify({
+        'message': message,
+        'user': serialize_user(user),
+        'access_token': create_access_token(identity=str(user['id'])),
+    }), status
+
+
+def _reset_serializer():
+    return URLSafeTimedSerializer(current_app.config['SECRET_KEY'], salt='password-reset')
+
 
 # ============================================================
 # Authentication Endpoints
@@ -16,129 +40,71 @@ auth_bp = Blueprint('auth', __name__)
 def register():
     """Create new user account"""
     try:
-        data = request.get_json()
-        
-        # Validate input
-        if not data or not data.get('email') or not data.get('password'):
-            return jsonify({'error': 'Email and password are required'}), 400
-        
-        email = data.get('email').strip().lower()
-        password = data.get('password')
-        first_name = data.get('first_name', '').strip()
-        last_name = data.get('last_name', '').strip()
-        
-        if not first_name or not last_name:
-            return jsonify({'error': 'First name and last name are required'}), 400
-        
-        if len(password) < 6:
-            return jsonify({'error': 'Password must be at least 6 characters'}), 400
-        
-        # Check if user exists
-        result = db.session.execute(
-            text('SELECT id FROM users WHERE email = :email'),
-            {'email': email}
-        ).fetchone()
-        
-        if result:
-            return jsonify({'error': 'Email already registered'}), 400
-        
-        # Hash password
-        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        
-        # Create user
-        db.session.execute(
-            text('''
-                INSERT INTO users (email, password_hash, first_name, last_name, is_active)
-                VALUES (:email, :password_hash, :first_name, :last_name, true)
-            '''),
-            {
-                'email': email,
-                'password_hash': password_hash,
-                'first_name': first_name,
-                'last_name': last_name
-            }
+        data = json_body()
+
+        email = clean_str(data.get('email')).lower()
+        password = data.get('password') or ''
+        if not email or not password:
+            return error('Email and password are required')
+
+        first_name = clean_str(data.get('first_name'))
+        last_name = clean_str(data.get('last_name'))
+        if not first_name and data.get('name'):
+            # The frontend store registers customers with a single full-name field
+            first_name, last_name = split_name(data['name'])
+        elif not last_name:
+            return error('First name and last name are required')
+        if not first_name:
+            return error('First name and last name are required')
+
+        if len(password) < MIN_PASSWORD_LENGTH:
+            return error(f'Password must be at least {MIN_PASSWORD_LENGTH} characters')
+
+        if query_one('SELECT id FROM users WHERE email = :email', email=email):
+            return error('Email already registered')
+
+        user = query_one(
+            f'''INSERT INTO users (email, password_hash, first_name, last_name, phone, preferred_shoe_size, is_active)
+                VALUES (:email, :password_hash, :first_name, :last_name, :phone,
+                        COALESCE(:shoe_size, 'UK 8.5'), true)
+                RETURNING {USER_COLUMNS}''',
+            email=email, password_hash=_hash_password(password), first_name=first_name, last_name=last_name,
+            phone=clean_str(data.get('phone')) or None,
+            shoe_size=clean_str(data.get('preferred_shoe_size')) or None,
         )
         db.session.commit()
-        
-        # Get user ID
-        user = db.session.execute(
-            text('SELECT id, email, first_name, last_name FROM users WHERE email = :email'),
-            {'email': email}
-        ).fetchone()
-        
-        # Create token
-        access_token = create_access_token(identity=str(user[0]))
-        
-        return jsonify({
-            'message': 'User created successfully',
-            'user': {
-                'id': str(user[0]),
-                'email': user[1],
-                'first_name': user[2],
-                'last_name': user[3]
-            },
-            'access_token': access_token
-        }), 201
-        
+        return _auth_response('User created successfully', user, 201)
+
     except Exception as e:
         db.session.rollback()
         logger.error(f'Registration error: {str(e)}')
-        return jsonify({'error': 'Registration failed'}), 500
+        return error('Registration failed', 500)
 
 
 @auth_bp.route('/login', methods=['POST'])
 def login():
     """User login"""
     try:
-        data = request.get_json()
-        
-        if not data or not data.get('email') or not data.get('password'):
-            return jsonify({'error': 'Email and password are required'}), 400
-        
-        email = data.get('email').strip().lower()
-        password = data.get('password')
-        
-        # Get user
-        user = db.session.execute(
-            text('''
-                SELECT id, email, first_name, last_name, password_hash, is_active, is_admin
-                FROM users WHERE email = :email AND is_active = true
-            '''),
-            {'email': email}
-        ).fetchone()
-        
-        if not user:
-            return jsonify({'error': 'Invalid email or password'}), 401
-        
-        # Verify password
-        if not bcrypt.checkpw(password.encode('utf-8'), user[5].encode('utf-8')):
-            return jsonify({'error': 'Invalid email or password'}), 401
-        
-        # Update last login
-        db.session.execute(
-            text('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = :id'),
-            {'id': user[0]}
-        )
+        data = json_body()
+        email = clean_str(data.get('email')).lower()
+        password = data.get('password') or ''
+        if not email or not password:
+            return error('Email and password are required')
+
+        user = query_one(f'SELECT {USER_COLUMNS}, password_hash FROM users WHERE email = :email', email=email)
+        if not user or not bcrypt.checkpw(password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+            return error('Invalid email or password', 401)
+        if not user['is_active']:
+            return error('This account has been suspended', 403)
+
+        execute('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = :id', id=user['id'])
         db.session.commit()
-        
-        # Create token
-        access_token = create_access_token(identity=str(user[0]))
-        
-        return jsonify({
-            'message': 'Login successful',
-            'user': {
-                'id': str(user[0]),
-                'email': user[1],
-                'first_name': user[2],
-                'last_name': user[3],
-                'is_admin': user[6]
-            },
-            'access_token': access_token
-        }), 200
-        
+        return _auth_response('Login successful', user, 200)
+
     except Exception as e:
+        db.session.rollback()
         logger.error(f'Login error: {str(e)}')
-        return jsonify({'error': 'Login failed'}), 500
+        return error('Login failed', 500)
 
 
 @auth_bp.route('/me', methods=['GET'])
@@ -146,92 +112,108 @@ def login():
 def get_current_user():
     """Get current user profile"""
     try:
-        user_id = get_jwt_identity()
-        
-        user = db.session.execute(
-            text('''
-                SELECT id, email, first_name, last_name, phone, avatar_url,
-                       newsletter_subscribed, promotions_enabled, is_admin, created_at
-                FROM users WHERE id = :id AND is_active = true
-            '''),
-            {'id': user_id}
-        ).fetchone()
-        
+        user = query_one(
+            f'SELECT {USER_COLUMNS} FROM users WHERE id = :id AND is_active = true', id=get_jwt_identity())
         if not user:
-            return jsonify({'error': 'User not found'}), 404
-        
-        return jsonify({
-            'user': {
-                'id': str(user[0]),
-                'email': user[1],
-                'first_name': user[2],
-                'last_name': user[3],
-                'phone': user[4],
-                'avatar_url': user[5],
-                'newsletter_subscribed': user[6],
-                'promotions_enabled': user[7],
-                'is_admin': user[8],
-                'created_at': str(user[9])
-            }
-        }), 200
-        
+            return error('User not found', 404)
+        return jsonify({'user': serialize_user(user)}), 200
+
     except Exception as e:
         logger.error(f'Get user error: {str(e)}')
-        return jsonify({'error': 'Failed to fetch user'}), 500
+        return error('Failed to fetch user', 500)
 
 
 @auth_bp.route('/logout', methods=['POST'])
-@jwt_required()
+@jwt_required(optional=True)
 def logout():
-    """User logout"""
-    # JWT is stateless, so just return success
+    """User logout (JWTs are stateless; the client discards the token)"""
     return jsonify({'message': 'Logout successful'}), 200
+
+
+@auth_bp.route('/change-password', methods=['POST'])
+@jwt_required()
+def change_password():
+    """Change password for the logged-in user"""
+    try:
+        data = json_body()
+        current = data.get('current_password') or ''
+        new = data.get('new_password') or ''
+        if len(new) < MIN_PASSWORD_LENGTH:
+            return error(f'Password must be at least {MIN_PASSWORD_LENGTH} characters')
+
+        user = query_one('SELECT password_hash FROM users WHERE id = :id', id=get_jwt_identity())
+        if not user or not bcrypt.checkpw(current.encode('utf-8'), user['password_hash'].encode('utf-8')):
+            return error('Current password is incorrect', 401)
+
+        execute('UPDATE users SET password_hash = :hash, updated_at = CURRENT_TIMESTAMP WHERE id = :id',
+                hash=_hash_password(new), id=get_jwt_identity())
+        db.session.commit()
+        return jsonify({'message': 'Password changed successfully'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f'Change password error: {str(e)}')
+        return error('Failed to change password', 500)
 
 
 @auth_bp.route('/forgot-password', methods=['POST'])
 def forgot_password():
     """Request password reset"""
     try:
-        data = request.get_json()
-        
-        if not data or not data.get('email'):
-            return jsonify({'error': 'Email is required'}), 400
-        
-        email = data.get('email').strip().lower()
-        
-        # Check if user exists
-        user = db.session.execute(
-            text('SELECT id FROM users WHERE email = :email'),
-            {'email': email}
-        ).fetchone()
-        
-        if not user:
-            # Don't reveal if email exists (security)
-            return jsonify({'message': 'If email exists, password reset link will be sent'}), 200
-        
-        # TODO: Generate reset token and send email
-        # For now, just return success
-        
-        return jsonify({'message': 'Password reset link sent to email'}), 200
-        
+        email = clean_str(json_body().get('email')).lower()
+        if not email:
+            return error('Email is required')
+
+        response = {'message': 'If the email exists, a password reset link has been sent'}
+
+        user = query_one('SELECT id, password_hash FROM users WHERE email = :email AND is_active = true', email=email)
+        if user:
+            # The hash fragment makes the token single-use: it stops verifying once the password changes
+            token = _reset_serializer().dumps({'id': str(user['id']), 'v': user['password_hash'][-10:]})
+            link = f'{current_app.config["FRONTEND_URL"]}/reset-password?token={token}'
+            logger.info(f'Password reset link for {email}: {link}')  # TODO: send through an email provider
+            if current_app.config.get('DEBUG'):
+                response['reset_token'] = token  # lets developers test without an email service
+
+        # Same answer for unknown emails so accounts cannot be enumerated
+        return jsonify(response), 200
+
     except Exception as e:
         logger.error(f'Forgot password error: {str(e)}')
-        return jsonify({'error': 'Failed to process request'}), 500
+        return error('Failed to process request', 500)
 
 
 @auth_bp.route('/reset-password', methods=['POST'])
 def reset_password():
     """Reset password with token"""
     try:
-        data = request.get_json()
-        
-        if not data or not data.get('token') or not data.get('password'):
-            return jsonify({'error': 'Token and password are required'}), 400
-        
-        # TODO: Validate token and update password
-        
+        data = json_body()
+        token = data.get('token') or ''
+        password = data.get('password') or ''
+        if not token or not password:
+            return error('Token and password are required')
+        if len(password) < MIN_PASSWORD_LENGTH:
+            return error(f'Password must be at least {MIN_PASSWORD_LENGTH} characters')
+
+        try:
+            payload = _reset_serializer().loads(token, max_age=current_app.config['PASSWORD_RESET_MAX_AGE'])
+        except SignatureExpired:
+            return error('Reset link has expired')
+        except BadSignature:
+            return error('Invalid reset link')
+
+        if not is_uuid(payload.get('id')):
+            return error('Invalid reset link')
+        user = query_one('SELECT id, password_hash FROM users WHERE id = :id AND is_active = true', id=payload['id'])
+        if not user or user['password_hash'][-10:] != payload.get('v'):
+            return error('Invalid or already used reset link')
+
+        execute('UPDATE users SET password_hash = :hash, updated_at = CURRENT_TIMESTAMP WHERE id = :id',
+                hash=_hash_password(password), id=user['id'])
+        db.session.commit()
         return jsonify({'message': 'Password reset successful'}), 200
-        
+
     except Exception as e:
+        db.session.rollback()
         logger.error(f'Reset password error: {str(e)}')
-        return jsonify({'error': 'Failed to reset password'}), 500
+        return error('Failed to reset password', 500)

@@ -6,11 +6,12 @@
 -- SEED USERS
 -- ============================================================
 
--- Admin User (Password: admin123)
+-- All seed users share the password: admin123  (DEVELOPMENT ONLY - change or delete before going live)
+-- Admin User
 INSERT INTO users (email, password_hash, first_name, last_name, is_admin, newsletter_subscribed)
 VALUES (
   'admin@harrisonbull.com',
-  '$2b$10$YOvVHdm8S8nQlEFLW.8q3e5x8H6Z2K7J9L5N0P8Q1R2S3T4U5V6W7X',
+  '$2b$12$ZmsIj6By/vkyFaDRQpGppu9qtpVVzUpBqNgA2nOhXUbFvdC6g44Mm',
   'Admin',
   'User',
   true,
@@ -21,7 +22,7 @@ VALUES (
 INSERT INTO users (email, password_hash, first_name, last_name, newsletter_subscribed)
 VALUES (
   'john@example.com',
-  '$2b$10$YOvVHdm8S8nQlEFLW.8q3e5x8H6Z2K7J9L5N0P8Q1R2S3T4U5V6W7X',
+  '$2b$12$ZmsIj6By/vkyFaDRQpGppu9qtpVVzUpBqNgA2nOhXUbFvdC6g44Mm',
   'John',
   'Doe',
   true
@@ -31,7 +32,7 @@ VALUES (
 INSERT INTO users (email, password_hash, first_name, last_name, phone)
 VALUES (
   'jane@example.com',
-  '$2b$10$YOvVHdm8S8nQlEFLW.8q3e5x8H6Z2K7J9L5N0P8Q1R2S3T4U5V6W7X',
+  '$2b$12$ZmsIj6By/vkyFaDRQpGppu9qtpVVzUpBqNgA2nOhXUbFvdC6g44Mm',
   'Jane',
   'Smith',
   '+1-555-0123'
@@ -169,8 +170,8 @@ INSERT INTO product_sizes (product_id, size, stock_quantity)
 SELECT id, size, qty FROM (
   SELECT (SELECT id FROM products WHERE slug = 'mayfair-cap-toe-oxford' LIMIT 1) as id, size, qty FROM (
     VALUES 
-      ('UK 6.0', 3), ('UK 6.5', 4), ('UK 7.0', 6), ('UK 7.5', 8), ('UK 8.0', 12),
-      ('UK 8.5', 9), ('UK 9.0', 7), ('UK 9.5', 5), ('UK 10.0', 4), ('UK 10.5', 2), ('UK 11.0', 3)
+      ('UK 6', 3), ('UK 6.5', 4), ('UK 7', 6), ('UK 7.5', 8), ('UK 8', 12),
+      ('UK 8.5', 9), ('UK 9', 7), ('UK 9.5', 5), ('UK 10', 4), ('UK 10.5', 2), ('UK 11', 3)
   ) AS t(size, qty)
 );
 
@@ -179,8 +180,8 @@ INSERT INTO product_sizes (product_id, size, stock_quantity)
 SELECT id, size, qty FROM (
   SELECT (SELECT id FROM products WHERE slug = 'st-james-wholecut-oxford' LIMIT 1) as id, size, qty FROM (
     VALUES 
-      ('UK 6.5', 2), ('UK 7.0', 5), ('UK 7.5', 7), ('UK 8.0', 8), ('UK 8.5', 6),
-      ('UK 9.0', 5), ('UK 9.5', 3), ('UK 10.0', 2), ('UK 10.5', 1), ('UK 11.0', 2)
+      ('UK 6.5', 2), ('UK 7', 5), ('UK 7.5', 7), ('UK 8', 8), ('UK 8.5', 6),
+      ('UK 9', 5), ('UK 9.5', 3), ('UK 10', 2), ('UK 10.5', 1), ('UK 11', 2)
   ) AS t(size, qty)
 );
 
@@ -189,8 +190,8 @@ INSERT INTO product_sizes (product_id, size, stock_quantity)
 SELECT id, size, qty FROM (
   SELECT (SELECT id FROM products WHERE slug = 'chelsea-heritage-boot' LIMIT 1) as id, size, qty FROM (
     VALUES 
-      ('UK 6.5', 3), ('UK 7.0', 4), ('UK 7.5', 6), ('UK 8.0', 9), ('UK 8.5', 8),
-      ('UK 9.0', 6), ('UK 9.5', 4), ('UK 10.0', 3), ('UK 10.5', 2), ('UK 11.0', 3)
+      ('UK 6.5', 3), ('UK 7', 4), ('UK 7.5', 6), ('UK 8', 9), ('UK 8.5', 8),
+      ('UK 9', 6), ('UK 9.5', 4), ('UK 10', 3), ('UK 10.5', 2), ('UK 11', 3)
   ) AS t(size, qty)
 );
 
@@ -199,8 +200,8 @@ INSERT INTO product_sizes (product_id, size, stock_quantity)
 SELECT id, size, qty FROM (
   SELECT (SELECT id FROM products WHERE slug = 'classic-penny-loafer' LIMIT 1) as id, size, qty FROM (
     VALUES 
-      ('UK 6.0', 2), ('UK 6.5', 3), ('UK 7.0', 5), ('UK 7.5', 6), ('UK 8.0', 8),
-      ('UK 8.5', 6), ('UK 9.0', 4), ('UK 9.5', 3), ('UK 10.0', 2), ('UK 10.5', 1)
+      ('UK 6', 2), ('UK 6.5', 3), ('UK 7', 5), ('UK 7.5', 6), ('UK 8', 8),
+      ('UK 8.5', 6), ('UK 9', 4), ('UK 9.5', 3), ('UK 10', 2), ('UK 10.5', 1)
   ) AS t(size, qty)
 );
 
@@ -237,11 +238,10 @@ SELECT id, url, alt, ord, isprim FROM (
 -- SEED PROMOTIONAL BANNERS
 -- ============================================================
 
-INSERT INTO promotional_banners (title, description, image_url, link_url, display_order, is_active)
+INSERT INTO promotional_banners (title, subtitle, badge, button_text, image_url, link_url, background_color, display_order, is_active)
 VALUES
-  ('Summer Collection', 'Explore our latest summer collection of hand-crafted shoes', 'https://images.unsplash.com/photo-1542272604-787c62d465d1?q=80&w=1200&auto=format&fit=crop', '/shop', 1, true),
-  ('Craftsmanship Guide', 'Learn about our Goodyear welting process', 'https://images.unsplash.com/photo-1491553895911-0055eca6402d?q=80&w=1200&auto=format&fit=crop', '/craftsmanship', 2, true),
-  ('New Arrivals', 'Check out what''s new this season', 'https://images.unsplash.com/photo-1460353581641-37baddab0fa2?q=80&w=1200&auto=format&fit=crop', '/shop', 3, true);
+  ('The Art of the Goodyear Hand Welt', 'Over 200 Handcrafted Operations • Lifetime Resolability • Since 2010', 'HERITAGE BENCHMADE', 'Explore The Collection', 'https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?q=80&w=1800&auto=format&fit=crop', '/shop', '#0A1C36', 1, true),
+  ('Complimentary Cedar Shoe Trees', 'Receive handcrafted aromatic red cedar shoe trees with every welted pair', 'LIMITED COMPLIMENTARY GIFT', 'Claim With Any Order', 'https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?q=80&w=1800&auto=format&fit=crop', '/offers', '#071526', 2, true);
 
 
 -- ============================================================
@@ -250,17 +250,18 @@ VALUES
 
 INSERT INTO coupons (code, description, discount_type, discount_value, min_order_amount, max_uses, expires_at, is_active)
 VALUES
-  ('WELCOME10', '10% off for new customers', 'percentage', 10, 0, 100, '2026-12-31', true),
-  ('SUMMER20', '20% off entire summer collection', 'percentage', 20, 100, 50, '2026-09-30', true),
-  ('FLAT50', 'Flat $50 off orders over $500', 'fixed', 50, 500, 30, '2026-10-15', true);
+  ('WELT10', '10% off your first handcrafted Goodyear welted footwear order.', 'percentage', 10, 250, NULL, '2026-12-31', true),
+  ('HARRISON15', '15% savings on bespoke and double orders exceeding $500.', 'percentage', 15, 500, NULL, '2026-12-31', true),
+  ('ROYALPAIR', '$60 flat master craftsman privilege discount on two pairs or more.', 'fixed', 60, 750, NULL, '2026-11-30', true),
+  ('FIRSTBOOT', '12% discount on our Chelsea & Chukka Goodyear welted boot collection.', 'percentage', 12, 400, NULL, '2026-12-31', true);
 
 
 -- ============================================================
 -- SEED PRODUCT REVIEWS
 -- ============================================================
 
-INSERT INTO product_reviews (product_id, user_id, customer_name, email, rating, title, comment, verified_purchase, is_approved)
-SELECT p.id, u.id, u.first_name || ' ' || u.last_name, u.email, rating, title, comment, true, true
+INSERT INTO product_reviews (product_id, user_id, customer_name, email, rating, title, comment, verified_purchase, is_approved, status)
+SELECT p.id, u.id, u.first_name || ' ' || u.last_name, u.email, reviews.rating, reviews.title, reviews.comment, true, true, 'Approved'
 FROM (
   SELECT 'mayfair-cap-toe-oxford'::text as slug, 5 as rating, 'Exceptional Craftsmanship' as title, 'These shoes are absolutely stunning. The leather feels buttery soft and the construction is impeccable. Worth every penny!' as comment
   UNION ALL

@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   avatar_url VARCHAR(500),
   newsletter_subscribed BOOLEAN DEFAULT false,
   promotions_enabled BOOLEAN DEFAULT true,
+  preferred_shoe_size VARCHAR(20) DEFAULT 'UK 8.5',
+  preferred_width VARCHAR(30) DEFAULT 'D (Regular)',
   is_admin BOOLEAN DEFAULT false,
   is_active BOOLEAN DEFAULT true,
   last_login_at TIMESTAMP,
@@ -38,13 +40,14 @@ CREATE TABLE IF NOT EXISTS addresses (
   last_name VARCHAR(100) NOT NULL,
   company_name VARCHAR(200),
   street_address VARCHAR(255) NOT NULL,
+  apartment VARCHAR(255),
   city VARCHAR(100) NOT NULL,
   state VARCHAR(100) NOT NULL,
   postal_code VARCHAR(20) NOT NULL,
   country VARCHAR(100) NOT NULL,
-  phone VARCHAR(20) NOT NULL,
+  phone VARCHAR(30) NOT NULL,
   is_default BOOLEAN DEFAULT false,
-  address_type VARCHAR(20) DEFAULT 'billing', -- 'billing', 'shipping', 'both'
+  address_type VARCHAR(20) DEFAULT 'Home', -- 'Home', 'Office'
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -182,59 +185,6 @@ CREATE INDEX idx_cart_items_session_id ON cart_items(session_id);
 CREATE INDEX idx_cart_items_expires_at ON cart_items(expires_at);
 
 
--- Orders
-CREATE TABLE IF NOT EXISTS orders (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_number VARCHAR(50) UNIQUE NOT NULL,
-  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  customer_name VARCHAR(255) NOT NULL,
-  customer_email VARCHAR(255) NOT NULL,
-  customer_phone VARCHAR(20) NOT NULL,
-  subtotal DECIMAL(10, 2) NOT NULL,
-  tax DECIMAL(10, 2) DEFAULT 0,
-  shipping_cost DECIMAL(10, 2) DEFAULT 0,
-  discount_amount DECIMAL(10, 2) DEFAULT 0,
-  coupon_id UUID REFERENCES coupons(id),
-  total DECIMAL(10, 2) NOT NULL,
-  status VARCHAR(50) DEFAULT 'Pending', -- Pending, Processing, Shipped, Delivered, Cancelled, Returned
-  payment_method VARCHAR(100),
-  payment_status VARCHAR(50) DEFAULT 'Pending', -- Paid, Pending, Refunded
-  shipping_address_id UUID REFERENCES addresses(id),
-  billing_address_id UUID REFERENCES addresses(id),
-  tracking_number VARCHAR(100),
-  notes TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_orders_user_id ON orders(user_id);
-CREATE INDEX idx_orders_order_number ON orders(order_number);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_orders_payment_status ON orders(payment_status);
-CREATE INDEX idx_orders_created_at ON orders(created_at);
-
-
--- Order Items (Line items in orders)
-CREATE TABLE IF NOT EXISTS order_items (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-  product_id UUID NOT NULL REFERENCES products(id),
-  product_title VARCHAR(255) NOT NULL,
-  size VARCHAR(50) NOT NULL,
-  quantity INT NOT NULL,
-  unit_price DECIMAL(10, 2) NOT NULL,
-  subtotal DECIMAL(10, 2) NOT NULL,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_order_items_order_id ON order_items(order_id);
-CREATE INDEX idx_order_items_product_id ON order_items(product_id);
-
-
--- ============================================================
--- PROMOTION & DISCOUNT TABLES
--- ============================================================
-
 -- Coupons & Discount Codes
 CREATE TABLE IF NOT EXISTS coupons (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -258,10 +208,90 @@ CREATE INDEX idx_coupons_is_active ON coupons(is_active);
 CREATE INDEX idx_coupons_expires_at ON coupons(expires_at);
 
 
+-- Orders
+CREATE TABLE IF NOT EXISTS orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_number VARCHAR(50) UNIQUE NOT NULL,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  customer_name VARCHAR(255) NOT NULL,
+  customer_email VARCHAR(255) NOT NULL,
+  customer_phone VARCHAR(30) NOT NULL,
+  subtotal DECIMAL(10, 2) NOT NULL,
+  tax DECIMAL(10, 2) DEFAULT 0,
+  shipping_cost DECIMAL(10, 2) DEFAULT 0,
+  discount_amount DECIMAL(10, 2) DEFAULT 0,
+  coupon_id UUID REFERENCES coupons(id),
+  total DECIMAL(10, 2) NOT NULL,
+  status VARCHAR(50) DEFAULT 'Placed', -- Placed, Confirmed, Packed, Shipped, Out for Delivery, Delivered, Cancelled
+  payment_method VARCHAR(100),
+  payment_status VARCHAR(50) DEFAULT 'Pending', -- Paid, Pending, Refunded
+  shipping_address_id UUID REFERENCES addresses(id),
+  billing_address_id UUID REFERENCES addresses(id),
+  tracking_number VARCHAR(100),
+  courier VARCHAR(100) DEFAULT 'Courier Partner',
+  estimated_delivery_date VARCHAR(100),
+  coupon_code VARCHAR(50),
+  shipping_address JSONB,   -- snapshot of the address at order time
+  delivery_method JSONB,    -- {id, name, price, estimated_days}
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_order_number ON orders(order_number);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_payment_status ON orders(payment_status);
+CREATE INDEX idx_orders_created_at ON orders(created_at);
+
+
+-- Order tracking timeline (one row per stage, shown on the Track Order page)
+CREATE TABLE IF NOT EXISTS order_tracking_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  step_order INT NOT NULL,
+  status VARCHAR(50) NOT NULL,
+  location VARCHAR(255),
+  description TEXT,
+  completed BOOLEAN DEFAULT false,
+  occurred_at TIMESTAMP,
+  UNIQUE(order_id, status)
+);
+
+CREATE INDEX idx_order_tracking_logs_order_id ON order_tracking_logs(order_id);
+
+
+-- Order Items (Line items in orders)
+CREATE TABLE IF NOT EXISTS order_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id),
+  product_title VARCHAR(255) NOT NULL,
+  size VARCHAR(50) NOT NULL,
+  quantity INT NOT NULL,
+  unit_price DECIMAL(10, 2) NOT NULL,
+  subtotal DECIMAL(10, 2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_order_items_product_id ON order_items(product_id);
+
+
+-- ============================================================
+-- PROMOTION & DISCOUNT TABLES
+-- ============================================================
+
+
+
 -- Promotional Banners
 CREATE TABLE IF NOT EXISTS promotional_banners (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title VARCHAR(255) NOT NULL,
+  subtitle VARCHAR(500),
+  badge VARCHAR(100),
+  button_text VARCHAR(100),
+  background_color VARCHAR(20),
   description TEXT,
   image_url VARCHAR(500) NOT NULL,
   link_url VARCHAR(500),
@@ -294,6 +324,8 @@ CREATE TABLE IF NOT EXISTS product_reviews (
   comment TEXT,
   verified_purchase BOOLEAN DEFAULT false,
   is_approved BOOLEAN DEFAULT false,
+  status VARCHAR(20) DEFAULT 'Pending', -- Pending, Approved, Rejected
+  fit_feedback VARCHAR(30) DEFAULT 'True to Size', -- Runs Small, True to Size, Runs Large
   helpful_count INT DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -334,6 +366,9 @@ CREATE TABLE IF NOT EXISTS blog_posts (
   content TEXT NOT NULL,
   excerpt VARCHAR(500),
   author_id UUID REFERENCES users(id),
+  author_name VARCHAR(150),
+  author_role VARCHAR(150),
+  read_time VARCHAR(50),
   featured_image_url VARCHAR(500),
   category VARCHAR(100),
   is_published BOOLEAN DEFAULT false,
@@ -365,6 +400,11 @@ CREATE TABLE IF NOT EXISTS store_locations (
   email VARCHAR(255),
   latitude DECIMAL(10, 8),
   longitude DECIMAL(11, 8),
+  description TEXT,
+  image_url VARCHAR(500),
+  hours_text VARCHAR(500),   -- free-text hours shown on the store card
+  appointment_available BOOLEAN DEFAULT false,
+  services JSONB DEFAULT '[]'::jsonb,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -427,3 +467,29 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 CREATE INDEX idx_audit_logs_admin_id ON audit_logs(admin_id);
 CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at);
 CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
+
+
+
+-- ============================================================
+-- SITE CONTENT & CONTACT
+-- ============================================================
+
+-- Key/value settings (e.g. the admin-edited navbar/footer/home-page content blob)
+CREATE TABLE IF NOT EXISTS site_settings (
+  key VARCHAR(100) PRIMARY KEY,
+  value JSONB NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Contact form submissions
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  subject VARCHAR(255),
+  message TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_contact_messages_created_at ON contact_messages(created_at);
