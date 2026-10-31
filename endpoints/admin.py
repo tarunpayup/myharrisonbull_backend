@@ -351,16 +351,23 @@ def update_product(product_id):
 
 @admin_bp.route('/products/<product_id>', methods=['DELETE'])
 def delete_product(product_id):
-    """Hide a product (soft delete keeps past orders intact)"""
+    """Permanently delete a product. One that past orders refer to is hidden instead so order history stays intact."""
     try:
-        if not is_uuid(product_id):
+        if not is_uuid(product_id) or not query_one('SELECT id FROM products WHERE id = :id', id=product_id):
             return not_found('Product')
-        result = execute('UPDATE products SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = :id', id=product_id)
-        if result.rowcount == 0:
-            db.session.rollback()
-            return not_found('Product')
+
+        if query_scalar('SELECT 1 FROM order_items WHERE product_id = :id LIMIT 1', id=product_id):
+            execute('UPDATE products SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = :id', id=product_id)
+            db.session.commit()
+            return jsonify({
+                'message': 'Product has existing orders, so it was hidden from the shop instead of deleted',
+                'deleted': False,
+            }), 200
+
+        # images, sizes, specifications, reviews, wishlist and cart rows go with it (ON DELETE CASCADE)
+        execute('DELETE FROM products WHERE id = :id', id=product_id)
         db.session.commit()
-        return jsonify({'message': 'Product deleted successfully'}), 200
+        return jsonify({'message': 'Product deleted successfully', 'deleted': True}), 200
 
     except Exception as e:
         db.session.rollback()

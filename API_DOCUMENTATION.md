@@ -89,7 +89,7 @@ Order status lifecycle: `Placed → Confirmed → Packed → Shipped → Out for
 | Area | Endpoints |
 |---|---|
 | Dashboard | `GET /dashboard`, `GET /analytics/sales?period=daily\|weekly\|monthly` |
-| Products | `GET /products`, `GET /products/<id>`, `POST /products`, `PUT /products/<id>`, `DELETE /products/<id>` (soft delete). Body: product fields + `category` or `category_id`, `images: [url]`, `sizes: {"UK 8": 5}`, `specifications: {…}`. `images`/`sizes` replace the existing set only when sent; stock and `in_stock` follow `sizes` |
+| Products | `GET /products`, `GET /products/<id>`, `POST /products`, `PUT /products/<id>`, `DELETE /products/<id>` (permanent; a product that past orders refer to is hidden instead and the response has `deleted: false`). Body: product fields + `category` or `category_id`, `images: [url]`, `sizes: {"UK 8": 5}`, `specifications: {…}`. `images`/`sizes` replace the existing set only when sent; stock and `in_stock` follow `sizes` |
 | Orders | `GET /orders?status=&q=`, `GET /orders/<id>`, `PUT /orders/<id>/status {status, location?, note?}` (updates the timeline, notifies the customer, restocks on cancel), `PUT /orders/<id>/payment {payment_status}` |
 | Users | `GET /users?q=`, `PUT /users/<id>/status {is_active}` |
 | Coupons | `GET|POST /coupons`, `PUT|DELETE /coupons/<id>` — accepts `discount_percent` **or** `discount_amount`, `min_spend`, `max_uses`, `expires_at`, `active` |
